@@ -1,0 +1,27 @@
+# Terraform working directory
+.terraform/
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+
+# Variable files may contain secrets
+*.tfvars
+*.tfvars.json
+
+# Crash files
+crash.log
+crash.*.log
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Credentials
+clouds.yaml
+*.key
+*.pem
+
+./vscode
