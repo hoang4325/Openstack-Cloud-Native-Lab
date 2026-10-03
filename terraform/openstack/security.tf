@@ -3,7 +3,7 @@ resource "openstack_networking_secgroup_v2" "vm" {
   description = "Security group managed by Terraform"
 }
 
-resource "openstack_networking_secgroup_rule_v2" "icpm" {
+resource "openstack_networking_secgroup_rule_v2" "icmp" {
   direction = "ingress"
   ethertype = "IPv4"
   protocol = "icmp"
