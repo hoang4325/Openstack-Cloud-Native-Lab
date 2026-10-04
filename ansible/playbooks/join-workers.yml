@@ -1,0 +1,27 @@
+---
+- name: Generate join command
+  hosts: k8s_control
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Generate kubeadm join command
+      ansible.builtin.command:
+        cmd: kubeadm token create --ttl 2h --print-join-command
+      register: join_command
+      changed_when: false
+      no_log: true
+
+    - name: Store join command
+      ansible.builtin.set_fact:
+        kubeadm_join_command: "{{ join_command.stdout }}"
+      no_log: true
+
+
+- name: Join Kubernetes workers
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+
+  roles:
+    - worker

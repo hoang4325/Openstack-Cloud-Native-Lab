@@ -1,0 +1,190 @@
+---
+# =========================================================
+# Calico CRDs
+# =========================================================
+
+- name: Check Calico Installation CRD
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      get crd installations.operator.tigera.io
+  register: calico_installation_crd
+  changed_when: false
+  failed_when: false
+
+- name: Check Calico TigeraStatus CRD
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      get crd tigerastatuses.operator.tigera.io
+  register: calico_tigerastatus_crd
+  changed_when: false
+  failed_when: false
+
+- name: Install or reconcile Calico CRDs
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      apply
+      --server-side
+      --force-conflicts
+      -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/v3_projectcalico_org.yaml
+  register: calico_crds
+  when:
+    - calico_installation_crd.rc != 0 or calico_tigerastatus_crd.rc != 0
+  changed_when: >
+    'created' in calico_crds.stdout or
+    'configured' in calico_crds.stdout or
+    'serverside-applied' in calico_crds.stdout
+
+
+# =========================================================
+# Tigera Operator
+# =========================================================
+
+- name: Download Tigera operator manifest
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/tigera-operator.yaml"
+    dest: /tmp/tigera-operator.yaml
+    mode: "0644"
+
+- name: Install Tigera operator
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      apply
+      -f /tmp/tigera-operator.yaml
+  register: tigera_apply
+  changed_when: >
+    'created' in tigera_apply.stdout or
+    'configured' in tigera_apply.stdout
+
+- name: Wait for Tigera operator deployment
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      rollout status
+      deployment/tigera-operator
+      -n tigera-operator
+      --timeout=300s
+  changed_when: false
+
+
+# =========================================================
+# Verify CRD
+# =========================================================
+
+- name: Wait until Installation CRD exists
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      get crd installations.operator.tigera.io
+  register: installation_crd
+  retries: 30
+  delay: 5
+  until: installation_crd.rc == 0
+  changed_when: false
+
+- name: Wait until Installation CRD is established
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      wait
+      --for=condition=Established
+      crd/installations.operator.tigera.io
+      --timeout=180s
+  changed_when: false
+
+
+# =========================================================
+# Calico Installation
+# =========================================================
+
+- name: Render Calico installation configuration
+  ansible.builtin.template:
+    src: calico-installation.yml.j2
+    dest: /tmp/calico-installation.yml
+    mode: "0644"
+
+- name: Configure Calico
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      apply
+      -f /tmp/calico-installation.yml
+  register: calico_apply
+  changed_when: >
+    'created' in calico_apply.stdout or
+    'configured' in calico_apply.stdout
+
+
+# =========================================================
+# Wait for Calico
+# =========================================================
+
+- name: Wait for Tigera status resources
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      get tigerastatus
+      -o name
+  register: tigera_status
+  retries: 60
+  delay: 5
+  until:
+    - tigera_status.rc == 0
+    - tigera_status.stdout | length > 0
+  changed_when: false
+
+- name: Wait for all Kubernetes nodes to become Ready
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      wait
+      --for=condition=Ready
+      nodes
+      --all
+      --timeout=600s
+  changed_when: false
+
+
+# =========================================================
+# Verification
+# =========================================================
+
+- name: Get Kubernetes nodes
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      get nodes
+      -o wide
+  register: kubernetes_nodes
+  changed_when: false
+
+- name: Display Kubernetes nodes
+  ansible.builtin.debug:
+    var: kubernetes_nodes.stdout_lines
+
+- name: Get Tigera status
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      get tigerastatus
+  register: final_tigera_status
+  changed_when: false
+
+- name: Display Tigera status
+  ansible.builtin.debug:
+    var: final_tigera_status.stdout_lines

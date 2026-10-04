@@ -1,0 +1,64 @@
+---
+- name: Create apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download Kubernetes repository key
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/Release.key"
+    dest: /tmp/kubernetes-release.key
+    mode: "0644"
+  register: kubernetes_repo_key
+
+- name: Check Kubernetes keyring
+  ansible.builtin.stat:
+    path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  register: kubernetes_keyring
+
+- name: Install Kubernetes repository key
+  ansible.builtin.command:
+    cmd: >
+      gpg --dearmor --yes
+      -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      /tmp/kubernetes-release.key
+  when:
+    - kubernetes_repo_key.changed or not kubernetes_keyring.stat.exists
+
+- name: Configure Kubernetes repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    mode: "0644"
+    content: |
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/ /
+
+- name: Install Kubernetes packages
+  ansible.builtin.apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+    update_cache: true
+
+- name: Hold Kubernetes packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+- name: Configure kubelet node IP
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    mode: "0644"
+    content: |
+      KUBELET_EXTRA_ARGS=--node-ip={{ node_ip }}
+
+- name: Enable kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true

@@ -1,0 +1,8 @@
+---
+- name: Install Kubernetes CNI
+  hosts: k8s_control
+  become: false
+  gather_facts: false
+
+  roles:
+    - cni

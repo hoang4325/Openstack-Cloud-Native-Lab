@@ -1,0 +1,35 @@
+---
+- name: Verify operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version is version("24.04", ">=")
+    fail_msg: "Node must run Ubuntu 24.04 or newer."
+
+- name: Verify minimum memory
+  ansible.builtin.assert:
+    that:
+      - ansible_memtotal_mb >= 1800
+    fail_msg: "Node requires at least 2 GB RAM."
+
+- name: Verify node_ip exists
+  ansible.builtin.assert:
+    that:
+      - node_ip is defined
+      - node_ip | length > 0
+    fail_msg: "node_ip must be defined in host_vars."
+
+- name: Read machine ID
+  ansible.builtin.command:
+    cmd: cat /etc/machine-id
+  register: machine_id_result
+  changed_when: false
+
+- name: Store machine ID
+  ansible.builtin.set_fact:
+    node_machine_id: "{{ machine_id_result.stdout }}"
+
+- name: Verify Kubernetes network interface
+  ansible.builtin.command:
+    cmd: "ip -4 address show dev {{ calico_node_interface }}"
+  changed_when: false

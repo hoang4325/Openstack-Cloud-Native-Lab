@@ -1,0 +1,45 @@
+---
+- name: Kubernetes preflight
+  hosts: k8s_cluster
+  gather_facts: true
+
+  roles:
+    - preflight
+
+
+- name: Prepare Kubernetes nodes
+  hosts: k8s_cluster
+  become: true
+  gather_facts: true
+
+  roles:
+    - common
+    - containerd
+    - kubernetes
+
+
+- name: Initialize Kubernetes control plane
+  hosts: k8s_control
+  become: true
+  gather_facts: true
+
+  roles:
+    - control_plane
+
+
+- name: Join Kubernetes workers
+  hosts: k8s_workers
+  become: true
+  gather_facts: false
+
+  roles:
+    - worker
+
+
+- name: Install Kubernetes CNI
+  hosts: k8s_control
+  become: false
+  gather_facts: false
+
+  roles:
+    - cni

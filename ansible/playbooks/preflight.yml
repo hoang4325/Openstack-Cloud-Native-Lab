@@ -1,0 +1,7 @@
+---
+- name: Kubernetes preflight checks
+  hosts: k8s_cluster
+  gather_facts: true
+
+  roles:
+    - preflight

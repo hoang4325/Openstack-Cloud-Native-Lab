@@ -1,0 +1,8 @@
+---
+- name: Bootstrap Kubernetes control plane
+  hosts: k8s_control
+  become: true
+  gather_facts: true
+
+  roles:
+    - control_plane

@@ -1,0 +1,3 @@
+---
+node_ip: "192.168.17.137"
+node_role: "control-plane"

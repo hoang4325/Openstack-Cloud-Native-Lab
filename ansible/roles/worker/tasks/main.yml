@@ -1,0 +1,28 @@
+---
+- name: Verify join command exists
+  ansible.builtin.assert:
+    that:
+      - hostvars[groups['k8s_control'][0]].kubeadm_join_command is defined
+    fail_msg: >
+      Kubernetes join command is missing.
+      Run the control_plane role before the worker role.
+
+- name: Check whether worker already joined
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: worker_joined
+
+- name: Join worker to Kubernetes cluster
+  ansible.builtin.command:
+    cmd: >
+      {{ hostvars[groups['k8s_control'][0]].kubeadm_join_command }}
+      --node-name={{ inventory_hostname }}
+      --cri-socket=unix:///run/containerd/containerd.sock
+  when: not worker_joined.stat.exists
+  no_log: true
+
+- name: Enable kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+    state: started

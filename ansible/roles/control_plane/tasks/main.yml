@@ -1,0 +1,51 @@
+---
+- name: Check whether control plane already exists
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: control_plane_initialized
+
+- name: Initialize Kubernetes control plane
+  ansible.builtin.command:
+    cmd: >
+      kubeadm init
+      --node-name={{ inventory_hostname }}
+      --apiserver-advertise-address={{ node_ip }}
+      --pod-network-cidr={{ pod_network_cidr }}
+      --service-cidr={{ service_network_cidr }}
+      --cri-socket=unix:///run/containerd/containerd.sock
+  when: not control_plane_initialized.stat.exists
+
+- name: Wait for Kubernetes API server
+  ansible.builtin.wait_for:
+    host: "{{ node_ip }}"
+    port: 6443
+    timeout: 180
+
+- name: Create kubeconfig directory
+  ansible.builtin.file:
+    path: "/home/{{ kubernetes_user }}/.kube"
+    state: directory
+    owner: "{{ kubernetes_user }}"
+    group: "{{ kubernetes_user }}"
+    mode: "0700"
+
+- name: Install admin kubeconfig
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ kubeconfig_path }}"
+    remote_src: true
+    owner: "{{ kubernetes_user }}"
+    group: "{{ kubernetes_user }}"
+    mode: "0600"
+
+- name: Generate worker join command
+  ansible.builtin.command:
+    cmd: kubeadm token create --ttl 2h --print-join-command
+  register: kubeadm_join_result
+  changed_when: false
+  no_log: true
+
+- name: Store worker join command
+  ansible.builtin.set_fact:
+    kubeadm_join_command: "{{ kubeadm_join_result.stdout }}"
+  no_log: true
