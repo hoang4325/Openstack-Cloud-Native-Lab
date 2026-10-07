@@ -1,0 +1,155 @@
+---
+- name: Add MetalLB Helm repository
+  ansible.builtin.command:
+    cmd: >
+      helm repo add
+      {{ metallb_repo_name }}
+      {{ metallb_repo_url }}
+      --force-update
+  changed_when: false
+
+
+- name: Update Helm repositories
+  ansible.builtin.command:
+    cmd: helm repo update
+  changed_when: false
+
+
+# =========================================================
+# Namespace
+# =========================================================
+
+- name: Create MetalLB namespace
+  ansible.builtin.command:
+    cmd: >
+      kubectl create namespace {{ metallb_namespace }}
+      --dry-run=client
+      -o yaml
+  register: metallb_namespace_yaml
+  changed_when: false
+
+
+- name: Apply MetalLB namespace
+  ansible.builtin.command:
+    cmd: kubectl apply -f -
+    stdin: "{{ metallb_namespace_yaml.stdout }}"
+  register: metallb_namespace_apply
+  changed_when: >
+    'created' in metallb_namespace_apply.stdout or
+    'configured' in metallb_namespace_apply.stdout
+
+
+- name: Configure privileged Pod Security for MetalLB
+  ansible.builtin.command:
+    cmd: >
+      kubectl label namespace {{ metallb_namespace }}
+      pod-security.kubernetes.io/enforce=privileged
+      pod-security.kubernetes.io/audit=privileged
+      pod-security.kubernetes.io/warn=privileged
+      --overwrite
+  changed_when: false
+
+
+# =========================================================
+# Helm values
+# PHẢI render trước khi helm install
+# =========================================================
+
+- name: Render MetalLB Helm values
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: /tmp/metallb-values.yml
+    mode: "0644"
+
+
+# =========================================================
+# Install MetalLB
+# =========================================================
+
+- name: Install or upgrade MetalLB
+  ansible.builtin.command:
+    cmd: >
+      helm upgrade --install metallb
+      {{ metallb_repo_name }}/metallb
+      --namespace {{ metallb_namespace }}
+      --version {{ metallb_chart_version }}
+      --values /tmp/metallb-values.yml
+      --wait
+      --timeout 10m
+  register: metallb_install
+  changed_when: >
+    'has been installed' in metallb_install.stdout or
+    'has been upgraded' in metallb_install.stdout
+
+
+# =========================================================
+# Wait for CRDs
+# =========================================================
+
+- name: Wait for MetalLB IPAddressPool CRD
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      wait
+      --for=condition=Established
+      crd/ipaddresspools.metallb.io
+      --timeout=180s
+  changed_when: false
+
+
+- name: Wait for MetalLB L2Advertisement CRD
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      wait
+      --for=condition=Established
+      crd/l2advertisements.metallb.io
+      --timeout=180s
+  changed_when: false
+
+
+# =========================================================
+# MetalLB L2 configuration
+# =========================================================
+
+- name: Render MetalLB configuration
+  ansible.builtin.template:
+    src: metallb-config.yml.j2
+    dest: /tmp/metallb-config.yml
+    mode: "0644"
+
+
+- name: Apply MetalLB configuration
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      apply
+      -f /tmp/metallb-config.yml
+  register: metallb_config
+  changed_when: >
+    'created' in metallb_config.stdout or
+    'configured' in metallb_config.stdout
+
+
+# =========================================================
+# Verification
+# =========================================================
+
+- name: Get MetalLB pods
+  ansible.builtin.command:
+    cmd: >
+      kubectl
+      --kubeconfig={{ kubeconfig_path }}
+      get pods
+      -n {{ metallb_namespace }}
+      -o wide
+  register: metallb_pods
+  changed_when: false
+
+
+- name: Display MetalLB pods
+  ansible.builtin.debug:
+    var: metallb_pods.stdout_lines

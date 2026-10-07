@@ -1,0 +1,11 @@
+---
+helm_version: "v4.3.0"
+
+helm_os: "linux"
+helm_arch: "amd64"
+
+helm_install_dir: "/usr/local/bin"
+
+helm_archive: "helm-{{ helm_version }}-{{ helm_os }}-{{ helm_arch }}.tar.gz"
+
+helm_download_url: "https://get.helm.sh/{{ helm_archive }}"
